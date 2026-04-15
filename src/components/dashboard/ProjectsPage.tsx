@@ -115,11 +115,8 @@ export const ProjectsPage: React.FC = () => {
       const init: Record<string, { daily_rate: number; total_hours: number }> = {};
       p.assignments.forEach(a => {
         const profile = profiles.find(pr => pr.id === a.user_id);
-        const totalHours = p.workReports
-          .filter(wr => wr.user_id === a.user_id)
-          .reduce((sum, wr) => sum + (Number(wr.man_hours) || 0), 0);
         if (profile) {
-          init[a.user_id] = { daily_rate: profile.daily_rate, total_hours: totalHours };
+          init[a.user_id] = { daily_rate: profile.daily_rate, total_hours: 0 };
         }
       });
       return { ...prev, [p.id]: init };
@@ -157,9 +154,7 @@ export const ProjectsPage: React.FC = () => {
       if (!profile) return null;
       const override = projectOverrides[assignment.user_id];
       const daily_rate = override?.daily_rate ?? profile.daily_rate;
-      const totalHours = override?.total_hours ?? project.workReports
-        .filter(wr => wr.user_id === assignment.user_id)
-        .reduce((sum, wr) => sum + (Number(wr.man_hours) || 0), 0);
+      const totalHours = override?.total_hours ?? 0;
       const cost = Math.round((daily_rate / 8) * totalHours);
       return { user_id: assignment.user_id, full_name: profile.full_name, daily_rate, totalHours, cost };
     }).filter((x): x is NonNullable<typeof x> => x !== null);

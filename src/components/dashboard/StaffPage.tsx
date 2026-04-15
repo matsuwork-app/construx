@@ -14,7 +14,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -28,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
-import { Search, UserPlus, Edit2, Save, X, Briefcase, Loader2, Trash2, Mail, ExternalLink, Info } from 'lucide-react';
+import { Search, UserPlus, Edit2, Save, X, Briefcase, Loader2, Trash2 } from 'lucide-react';
 import { useSupabaseData } from '@/lib/useSupabaseData';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -41,14 +40,16 @@ interface EditState {
   daily_rate: number;
 }
 
+const defaultAddState: EditState = { full_name: '', role: 'worker', daily_rate: 0 };
+
 export const StaffPage: React.FC = () => {
-  const { profiles, projects, loading } = useSupabaseData();
+  const { profiles, projects, loading, refetch } = useSupabaseData();
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState>({ full_name: '', role: 'worker', daily_rate: 0 });
   const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviting, setInviting] = useState(false);
+  const [addState, setAddState] = useState<EditState>(defaultAddState);
+  const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const filteredProfiles = profiles.filter(m => {
@@ -63,7 +64,7 @@ export const StaffPage: React.FC = () => {
   };
 
   const handleSave = async (id: string) => {
-    const { error } = await supabase.from('profiles').update({
+    const { error } = await supabase.from('staff_members').update({
       full_name: editState.full_name,
       role: editState.role,
       daily_rate: editState.daily_rate,
@@ -73,40 +74,41 @@ export const StaffPage: React.FC = () => {
     } else {
       toast.success('スタッフ情報を更新しました');
       setEditingId(null);
+      refetch();
     }
   };
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);
-    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    const { error } = await supabase.from('staff_members').delete().eq('id', id);
     setDeletingId(null);
     if (error) {
       toast.error('削除に失敗しました');
     } else {
       toast.success('スタッフを削除しました');
+      refetch();
     }
   };
 
-  const handleInvite = async () => {
-    if (!inviteEmail.trim()) return;
-    setInviting(true);
-    // Supabase Auth の signInWithOtp でマジックリンクを送信
-    // （招待メールとして機能：未登録ユーザーはこのリンクで初回ログイン）
-    const redirectTo = import.meta.env.VITE_APP_URL || window.location.origin;
-    const { error } = await supabase.auth.signInWithOtp({
-      email: inviteEmail.trim(),
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: redirectTo,
-      }
+  const handleAdd = async () => {
+    if (!addState.full_name.trim()) {
+      toast.error('名前を入力してください');
+      return;
+    }
+    setAdding(true);
+    const { error } = await supabase.from('staff_members').insert({
+      full_name: addState.full_name.trim(),
+      role: addState.role,
+      daily_rate: addState.daily_rate,
     });
-    setInviting(false);
+    setAdding(false);
     if (error) {
-      toast.error(`招待メールの送信に失敗しました: ${error.message}`);
+      toast.error('スタッフの追加に失敗しました');
     } else {
-      toast.success(`${inviteEmail} に招待メールを送信しました。ログイン後にプロフィールが自動作成されます。`);
+      toast.success('スタッフを追加しました');
       setIsAddStaffOpen(false);
-      setInviteEmail('');
+      setAddState(defaultAddState);
+      refetch();
     }
   };
 
@@ -148,58 +150,56 @@ export const StaffPage: React.FC = () => {
               <UserPlus size={18} />
               スタッフ追加
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[460px]">
+            <DialogContent className="sm:max-w-[400px]">
               <DialogHeader>
-                <DialogTitle>スタッフを招待する</DialogTitle>
-                <DialogDescription>
-                  メールアドレスにログインリンクを送信します。スタッフが初回ログインすると自動的にプロフィールが作成されます。
-                </DialogDescription>
+                <DialogTitle>スタッフを追加する</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-2">
-                {/* メール招待フォーム */}
-                <div className="space-y-2">
-                  <Label htmlFor="invite-email">メールアドレス</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="invite-email"
-                      type="email"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      placeholder="worker@example.com"
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleInvite(); }}
-                    />
-                    <Button
-                      onClick={handleInvite}
-                      disabled={inviting || !inviteEmail.trim()}
-                      className="bg-[var(--dashboard-accent)] text-white hover:bg-[var(--dashboard-accent)]/90 gap-2 shrink-0"
-                    >
-                      {inviting ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
-                      送信
-                    </Button>
-                  </div>
+                <div className="space-y-1">
+                  <Label htmlFor="add-name">名前</Label>
+                  <Input
+                    id="add-name"
+                    value={addState.full_name}
+                    onChange={(e) => setAddState({ ...addState, full_name: e.target.value })}
+                    placeholder="山田 太郎"
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+                  />
                 </div>
-
-                {/* 補足説明 */}
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2 text-sm">
-                  <div className="flex items-center gap-2 font-bold text-blue-800">
-                    <Info size={14} />
-                    招待後の流れ
-                  </div>
-                  <ol className="list-decimal list-inside space-y-1 text-blue-700 text-xs">
-                    <li>スタッフのメールにログインリンクが届く</li>
-                    <li>リンクをクリックしてアプリにログイン</li>
-                    <li>プロフィール（名前・ロール・日当）が自動作成される</li>
-                    <li>管理者がこの画面から名前・日当を編集できる</li>
-                  </ol>
+                <div className="space-y-1">
+                  <Label htmlFor="add-role">ロール</Label>
+                  <Select value={addState.role} onValueChange={(value: Role) => setAddState({ ...addState, role: value })}>
+                    <SelectTrigger id="add-role">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="worker">作業員</SelectItem>
+                      <SelectItem value="foreman">親方</SelectItem>
+                      <SelectItem value="admin">事務</SelectItem>
+                      <SelectItem value="president">社長</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-
-                <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
-                  <ExternalLink size={12} />
-                  <span>または Supabase Dashboard → Authentication → Users から直接ユーザーを作成できます</span>
+                <div className="space-y-1">
+                  <Label htmlFor="add-rate">日当 (円)</Label>
+                  <Input
+                    id="add-rate"
+                    type="number"
+                    value={addState.daily_rate}
+                    onChange={(e) => setAddState({ ...addState, daily_rate: Number(e.target.value) })}
+                    placeholder="20000"
+                  />
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddStaffOpen(false)}>閉じる</Button>
+                <Button variant="outline" onClick={() => setIsAddStaffOpen(false)}>キャンセル</Button>
+                <Button
+                  onClick={handleAdd}
+                  disabled={adding || !addState.full_name.trim()}
+                  className="bg-[var(--dashboard-accent)] text-white hover:bg-[var(--dashboard-accent)]/90 gap-2"
+                >
+                  {adding ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+                  追加
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

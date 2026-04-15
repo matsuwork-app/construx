@@ -10,15 +10,13 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StaffPage } from '@/components/dashboard/StaffPage';
 import { ProjectsPage } from '@/components/dashboard/ProjectsPage';
 import { TimelinePage } from '@/components/dashboard/TimelinePage';
-import { MobileReportPage } from '@/components/mobile/MobileReportPage';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useSupabaseData } from '@/lib/useSupabaseData';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import { differenceInDays, formatDistanceToNow } from 'date-fns';
-import { ja } from 'date-fns/locale';
+import { differenceInDays } from 'date-fns';
 
 // 認証済みルートを保護するコンポーネント (ログイン後に元のページへ戻る)
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -30,12 +28,12 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const HomePage = () => {
-  const { projects, profiles, recentActivities, loading } = useSupabaseData();
+  const { projects, profiles, loading } = useSupabaseData();
 
   const activeProjectsCount = projects.filter(p => p.status === 'active').length;
   const totalCost = projects.reduce((sum, p) => {
     const expensesTotal = p.expenses.reduce((s, e) => s + Number(e.amount), 0);
-    return sum + p.laborCost + expensesTotal;
+    return sum + expensesTotal;
   }, 0);
   const staffCount = profiles.length;
 
@@ -100,63 +98,34 @@ const HomePage = () => {
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Card className="rounded-none border-dashboard-line bg-white/30 shadow-none">
-            <CardHeader>
-              <CardTitle className="text-lg font-bold">最近の活動</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {loading ? (
-                <div className="text-sm text-muted-foreground p-3">読み込み中...</div>
-              ) : recentActivities.length === 0 ? (
-                <div className="text-sm text-muted-foreground p-3">活動履歴がありません。</div>
-              ) : (
-                recentActivities.map((activity) => (
-                  <div key={activity.id} className="flex justify-between items-center p-3 border border-dashboard-line bg-white/50">
+        <Card className="rounded-none border-dashboard-line bg-white/30 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-lg font-bold">請求アラート</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {upcomingDeadlines.length === 0 && !loading ? (
+              <div className="text-sm text-muted-foreground p-3">期限間近のプロジェクトはありません。</div>
+            ) : (
+              upcomingDeadlines.map((project) => {
+                const days = differenceInDays(new Date(project.deadline!), new Date());
+                const deadlineText = days === 0 ? '今日' : days === 1 ? '明日' : `${days}日後`;
+                const margin = project.target_profit_margin || 0.2;
+                const cost = project.expenses.reduce((s, e) => s + Number(e.amount), 0);
+                const invoiceAmount = margin >= 1 ? cost : Math.round(cost / (1 - margin));
+
+                return (
+                  <div key={project.id} className="flex justify-between items-center p-3 border border-red-200 bg-red-50">
                     <div>
-                      <p className="text-sm font-bold">{activity.userName}</p>
-                      <p className="text-xs opacity-60">
-                        {activity.end_time ? '作業終了報告' : '作業開始報告'} - {activity.projectName}
-                      </p>
+                      <p className="text-sm font-bold">{project.name}</p>
+                      <p className="text-xs text-red-600 font-bold">期限: {deadlineText}</p>
                     </div>
-                    <span className="text-[10px] tech-header">
-                      {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true, locale: ja })}
-                    </span>
+                    <span className="tech-value font-bold">¥{invoiceAmount.toLocaleString()}</span>
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-none border-dashboard-line bg-white/30 shadow-none">
-            <CardHeader>
-              <CardTitle className="text-lg font-bold">請求アラート</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {upcomingDeadlines.length === 0 && !loading ? (
-                <div className="text-sm text-muted-foreground p-3">期限間近のプロジェクトはありません。</div>
-              ) : (
-                upcomingDeadlines.map((project) => {
-                  const days = differenceInDays(new Date(project.deadline!), new Date());
-                  const deadlineText = days === 0 ? '今日' : days === 1 ? '明日' : `${days}日後`;
-                  const margin = project.target_profit_margin || 0.2;
-                  const cost = project.laborCost + project.expenses.reduce((s, e) => s + Number(e.amount), 0);
-                  const invoiceAmount = margin >= 1 ? cost : Math.round(cost / (1 - margin));
-
-                  return (
-                    <div key={project.id} className="flex justify-between items-center p-3 border border-red-200 bg-red-50">
-                      <div>
-                        <p className="text-sm font-bold">{project.name}</p>
-                        <p className="text-xs text-red-600 font-bold">期限: {deadlineText}</p>
-                      </div>
-                      <span className="tech-value font-bold">¥{invoiceAmount.toLocaleString()}</span>
-                    </div>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
       </div>
     </DashboardLayout>
   );
@@ -174,8 +143,6 @@ export default function App() {
               <Route path="/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
               <Route path="/projects" element={<ProtectedRoute><ProjectsPage /></ProtectedRoute>} />
               <Route path="/timeline" element={<ProtectedRoute><TimelinePage /></ProtectedRoute>} />
-              <Route path="/mobile" element={<ProtectedRoute><MobileReportPage /></ProtectedRoute>} />
-              <Route path="/report" element={<ProtectedRoute><MobileReportPage /></ProtectedRoute>} />
             </Routes>
             <Toaster />
           </div>

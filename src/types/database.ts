@@ -9,7 +9,7 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-      profiles: {
+      staff_members: {
         Row: {
           id: string
           full_name: string
@@ -19,7 +19,7 @@ export interface Database {
           updated_at: string
         }
         Insert: {
-          id: string
+          id?: string
           full_name: string
           role?: 'president' | 'admin' | 'foreman' | 'worker'
           daily_rate?: number
@@ -81,66 +81,6 @@ export interface Database {
           final_invoice_amount?: number | null
           created_at?: string
           updated_at?: string
-        }
-        Relationships: []
-      }
-      work_reports: {
-        Row: {
-          id: string
-          project_id: string
-          user_id: string
-          start_time: string
-          end_time: string | null
-          man_hours: number | null
-          notes: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          project_id: string
-          user_id: string
-          start_time: string
-          end_time?: string | null
-          man_hours?: number | null
-          notes?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          project_id?: string
-          user_id?: string
-          start_time?: string
-          end_time?: string | null
-          man_hours?: number | null
-          notes?: string | null
-          created_at?: string
-        }
-        Relationships: []
-      }
-      project_photos: {
-        Row: {
-          id: string
-          project_id: string
-          report_id: string | null
-          storage_path: string
-          caption: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          project_id: string
-          report_id?: string | null
-          storage_path: string
-          caption?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          project_id?: string
-          report_id?: string | null
-          storage_path?: string
-          caption?: string | null
-          created_at?: string
         }
         Relationships: []
       }
