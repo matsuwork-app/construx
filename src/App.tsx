@@ -10,6 +10,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StaffPage } from '@/components/dashboard/StaffPage';
 import { ProjectsPage } from '@/components/dashboard/ProjectsPage';
 import { TimelinePage } from '@/components/dashboard/TimelinePage';
+import { AuthUserManagementPage } from '@/components/admin/AuthUserManagementPage';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Toaster } from '@/components/ui/sonner';
@@ -143,6 +144,7 @@ export default function App() {
               <Route path="/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
               <Route path="/projects" element={<ProtectedRoute><ProjectsPage /></ProtectedRoute>} />
               <Route path="/timeline" element={<ProtectedRoute><TimelinePage /></ProtectedRoute>} />
+              <Route path="/admin/users" element={<ProtectedRoute><AuthUserManagementPage /></ProtectedRoute>} />
             </Routes>
             <Toaster />
           </div>

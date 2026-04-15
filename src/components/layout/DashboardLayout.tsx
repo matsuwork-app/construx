@@ -5,7 +5,8 @@ import {
   Users,
   Clock,
   FileText,
-  LogOut
+  LogOut,
+  Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -29,6 +30,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     { name: '現場管理', path: '/projects', icon: FileText },
     { name: '人材', path: '/staff', icon: Users },
     { name: 'タイムライン', path: '/timeline', icon: Clock },
+    { name: '認証ユーザー', path: '/admin/users', icon: Shield },
   ];
 
   return (

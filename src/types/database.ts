@@ -36,6 +36,27 @@ export interface Database {
         }
         Relationships: []
       }
+      auth_user_metadata: {
+        Row: {
+          id: string
+          display_name: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          display_name: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          display_name?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           id: string

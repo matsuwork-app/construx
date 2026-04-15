@@ -12,9 +12,12 @@ export interface ProjectData extends ProjectRow {
   assignments: AssignmentRow[];
 }
 
+type AuthUserMetadataRow = Database['public']['Tables']['auth_user_metadata']['Row'];
+
 export function useSupabaseData() {
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [profiles, setProfiles] = useState<StaffMemberRow[]>([]);
+  const [authUsers, setAuthUsers] = useState<AuthUserMetadataRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
@@ -25,14 +28,17 @@ export function useSupabaseData() {
         { data: staffData },
         { data: expensesData },
         { data: assignmentsData },
+        { data: authUserData },
       ] = await Promise.all([
         supabase.from('projects').select('*').order('created_at', { ascending: false }),
         supabase.from('staff_members').select('*'),
         supabase.from('project_expenses').select('*'),
         supabase.from('project_assignments').select('*'),
+        supabase.from('auth_user_metadata').select('*'),
       ]);
 
       if (staffData) setProfiles(staffData);
+      if (authUserData) setAuthUsers(authUserData);
 
       if (projectsData) {
         const enrichedProjects: ProjectData[] = projectsData.map(p => {
@@ -61,6 +67,7 @@ export function useSupabaseData() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'project_expenses' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'project_assignments' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_members' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'auth_user_metadata' }, fetchData)
       .subscribe();
 
     return () => {
@@ -68,5 +75,5 @@ export function useSupabaseData() {
     };
   }, []);
 
-  return { projects, profiles, loading, refetch: fetchData };
+  return { projects, profiles, authUsers, loading, refetch: fetchData };
 }
