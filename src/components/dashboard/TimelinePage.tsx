@@ -51,13 +51,14 @@ export const TimelinePage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('all');
   const [filterOpen, setFilterOpen] = useState(false);
-  const [ganttViewStartDate, setGanttViewStartDate] = useState(new Date(2026, 0, 1)); // 2026/1/1 をデフォルト
+  const [ganttViewStartDate, setGanttViewStartDate] = useState(new Date(2026, 5, 1)); // 2026/6/1 をデフォルト
 
   const today = startOfDay(new Date());
 
-  // スライダーの範囲
-  const sliderMin = new Date(2026, 0, 1);
-  const sliderMax = new Date(2030, 11, 31);
+  // スライダーの範囲（デフォルト日付から前後6ヶ月）
+  const defaultDate = new Date(2026, 5, 1); // 2026/6/1
+  const sliderMin = subMonths(defaultDate, 6); // 2026/1/1
+  const sliderMax = addMonths(defaultDate, 6); // 2026/12/1
 
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
