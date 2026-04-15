@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -10,20 +12,23 @@ import {
 } from "@/components/ui/select";
 import {
   Camera,
-  Clock,
-  CheckCircle2,
   ArrowLeft,
   Image as ImageIcon,
   X,
-  Play,
-  Square,
-  Loader2
+  Loader2,
+  Send,
+  Check,
+  Users,
+  CalendarDays,
+  Clock,
+  FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { useSupabaseData } from '@/lib/useSupabaseData';
 import { Link } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
 interface PhotoEntry {
   id: string;
@@ -33,16 +38,22 @@ interface PhotoEntry {
 
 export const MobileReportPage: React.FC = () => {
   const { user } = useAuth();
-  const { projects, loading: projectsLoading } = useSupabaseData();
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [isWorking, setIsWorking] = useState(false);
-  const [currentReportId, setCurrentReportId] = useState<string | null>(null);
-  const [workStartTime, setWorkStartTime] = useState<Date | null>(null);
-  const [elapsed, setElapsed] = useState(0); // seconds
+  const { projects, profiles, loading: dataLoading } = useSupabaseData();
+
+  // ── フォーム状態 ──────────────────────────────────────────────
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const [startTime, setStartTime] = useState('08:00');
+  const [endTime, setEndTime] = useState('17:00');
+  const [memo, setMemo] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // ── 写真 ──────────────────────────────────────────────────────
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // プロジェクトが1件のみなら自動選択
   useEffect(() => {
@@ -51,71 +62,92 @@ export const MobileReportPage: React.FC = () => {
     }
   }, [projects, selectedProjectId]);
 
-  // 経過時間タイマー
+  // ログインユーザーを作業員リストにデフォルト選択
   useEffect(() => {
-    if (isWorking && workStartTime) {
-      timerRef.current = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - workStartTime.getTime()) / 1000));
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setElapsed(0);
+    if (user && selectedStaffIds.length === 0) {
+      setSelectedStaffIds([user.id]);
     }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [isWorking, workStartTime]);
+  }, [user]);
 
-  const formatElapsed = (seconds: number) => {
-    const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
-    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${h}:${m}:${s}`;
+  // 現場が変わったら写真をDBからロード
+  useEffect(() => {
+    if (!selectedProjectId) { setPhotos([]); return; }
+    setLoadingPhotos(true);
+    supabase
+      .from('project_photos')
+      .select('*')
+      .eq('project_id', selectedProjectId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) {
+          setPhotos(data.map(p => {
+            const { data: urlData } = supabase.storage
+              .from('project-photos')
+              .getPublicUrl(p.storage_path);
+            return { id: p.id, url: urlData.publicUrl, storagePath: p.storage_path };
+          }));
+        }
+        setLoadingPhotos(false);
+      });
+  }, [selectedProjectId]);
+
+  // 現場にアサインされたメンバーだけ表示（未選択時は全員）
+  const assignableStaff = selectedProjectId
+    ? (() => {
+        const project = projects.find(p => p.id === selectedProjectId);
+        if (!project || project.assignments.length === 0) return profiles;
+        return profiles.filter(pr => project.assignments.some(a => a.user_id === pr.id));
+      })()
+    : profiles;
+
+  const toggleStaff = (id: string) => {
+    setSelectedStaffIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
   };
 
-  const handleStart = async () => {
+  // 工数計算（時間）
+  const calcManHours = (): number => {
+    const [sh, sm] = startTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
+    const hours = (eh * 60 + em - (sh * 60 + sm)) / 60;
+    return Math.round(Math.max(0, hours) * 10) / 10;
+  };
+
+  // 日報送信
+  const handleSubmit = async () => {
     if (!selectedProjectId) { toast.error('現場を選択してください'); return; }
-    if (!user) { toast.error('ログインが必要です'); return; }
+    if (selectedStaffIds.length === 0) { toast.error('作業員を1名以上選択してください'); return; }
+    const manHours = calcManHours();
+    if (manHours <= 0) { toast.error('終了時刻は開始時刻より後にしてください'); return; }
 
-    const now = new Date();
-    const { data, error } = await supabase.from('work_reports').insert({
+    setSubmitting(true);
+
+    const startISO = new Date(`${reportDate}T${startTime}:00`).toISOString();
+    const endISO = new Date(`${reportDate}T${endTime}:00`).toISOString();
+
+    const reportsToInsert = selectedStaffIds.map(userId => ({
       project_id: selectedProjectId,
-      user_id: user.id,
-      start_time: now.toISOString(),
-    }).select().single();
+      user_id: userId,
+      start_time: startISO,
+      end_time: endISO,
+      man_hours: manHours,
+      notes: memo.trim() || null,
+    }));
 
+    const { error } = await supabase.from('work_reports').insert(reportsToInsert);
+
+    setSubmitting(false);
     if (error) {
-      toast.error('作業開始の記録に失敗しました');
+      toast.error('日報の送信に失敗しました');
       return;
     }
-    setCurrentReportId(data.id);
-    setIsWorking(true);
-    setWorkStartTime(now);
-    toast.success('作業を開始しました');
+    toast.success(`${selectedStaffIds.length}名分の日報を送信しました（${manHours}h）`);
+    setMemo('');
   };
 
-  const handleEnd = async () => {
-    if (!currentReportId || !workStartTime) return;
-
-    const now = new Date();
-    const manHours = (now.getTime() - workStartTime.getTime()) / (1000 * 60 * 60);
-
-    const { error } = await supabase.from('work_reports').update({
-      end_time: now.toISOString(),
-      man_hours: Math.round(manHours * 10) / 10,
-    }).eq('id', currentReportId);
-
-    if (error) {
-      toast.error('作業終了の記録に失敗しました');
-      return;
-    }
-    setIsWorking(false);
-    setWorkStartTime(null);
-    setCurrentReportId(null);
-    toast.success('作業を終了しました');
-  };
-
-  const handlePhotoClick = () => {
-    fileInputRef.current?.click();
-  };
+  // 写真撮影 / アップロード
+  const handlePhotoClick = () => fileInputRef.current?.click();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -123,7 +155,6 @@ export const MobileReportPage: React.FC = () => {
       if (!selectedProjectId) toast.error('現場を選択してください');
       return;
     }
-    if (photos.length >= 100) { toast.error('写真は1現場100枚までです'); return; }
 
     setUploadingPhoto(true);
     const ext = file.name.split('.').pop();
@@ -142,11 +173,11 @@ export const MobileReportPage: React.FC = () => {
 
     const { data: urlData } = supabase.storage.from('project-photos').getPublicUrl(storagePath);
 
-    const { data: photoRecord, error: dbError } = await supabase.from('project_photos').insert({
-      project_id: selectedProjectId,
-      report_id: currentReportId,
-      storage_path: storagePath,
-    }).select().single();
+    const { data: photoRecord, error: dbError } = await supabase
+      .from('project_photos')
+      .insert({ project_id: selectedProjectId, storage_path: storagePath })
+      .select()
+      .single();
 
     if (dbError) {
       toast.error('写真情報の保存に失敗しました');
@@ -165,30 +196,37 @@ export const MobileReportPage: React.FC = () => {
     toast.info('写真を削除しました');
   };
 
+  const manHours = calcManHours();
+
   return (
-    <div className="mobile-container space-y-6 max-w-md mx-auto pb-20">
-      <header className="flex items-center gap-4">
+    <div className="max-w-md mx-auto pb-24 px-4 space-y-5">
+      {/* ヘッダー */}
+      <header className="flex items-center gap-3 pt-4">
         <Link to="/">
           <Button variant="ghost" size="icon" className="rounded-full">
-            <ArrowLeft />
+            <ArrowLeft size={20} />
           </Button>
         </Link>
         <div>
-          <h2 className="text-xl font-bold tracking-tight">現場報告</h2>
-          <p className="text-xs text-muted-foreground font-bold">作業開始・終了・写真アップロード</p>
+          <h2 className="text-xl font-bold tracking-tight">日報入力</h2>
+          <p className="text-xs text-muted-foreground">現場・作業員・時間を記録</p>
         </div>
       </header>
 
       {/* 現場選択 */}
       <Card className="rounded-2xl border-dashboard-line shadow-sm">
-        <CardContent className="p-4">
-          <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground block mb-2">現場を選択</label>
-          {projectsLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={16} className="animate-spin" />読み込み中...</div>
+        <CardContent className="p-4 space-y-1">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            現場
+          </Label>
+          {dataLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+              <Loader2 size={14} className="animate-spin" />読み込み中...
+            </div>
           ) : (
-            <Select value={selectedProjectId} onValueChange={setSelectedProjectId} disabled={isWorking}>
-              <SelectTrigger className="rounded-xl border-dashboard-line">
-                <SelectValue placeholder="現場を選択してください..." />
+            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+              <SelectTrigger className="rounded-xl border-dashboard-line mt-1">
+                <SelectValue placeholder="現場を選択..." />
               </SelectTrigger>
               <SelectContent>
                 {projects.map(p => (
@@ -200,91 +238,184 @@ export const MobileReportPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Status Card */}
-      <div className="mobile-card space-y-6">
-        <div className="flex justify-between items-center">
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">現在のステータス</p>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isWorking ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
-              <span className="font-bold">{isWorking ? '作業中' : '未開始'}</span>
+      {/* 日付 */}
+      <Card className="rounded-2xl border-dashboard-line shadow-sm">
+        <CardContent className="p-4 space-y-1">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+            <CalendarDays size={13} />作業日
+          </Label>
+          <Input
+            type="date"
+            value={reportDate}
+            onChange={e => setReportDate(e.target.value)}
+            className="rounded-xl border-dashboard-line mt-1"
+          />
+        </CardContent>
+      </Card>
+
+      {/* 作業時間 */}
+      <Card className="rounded-2xl border-dashboard-line shadow-sm">
+        <CardContent className="p-4 space-y-3">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+            <Clock size={13} />作業時間
+          </Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">開始</Label>
+              <Input
+                type="time"
+                value={startTime}
+                onChange={e => setStartTime(e.target.value)}
+                className="rounded-xl border-dashboard-line text-center font-mono"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">終了</Label>
+              <Input
+                type="time"
+                value={endTime}
+                onChange={e => setEndTime(e.target.value)}
+                className="rounded-xl border-dashboard-line text-center font-mono"
+              />
             </div>
           </div>
-          {isWorking && (
-            <div className="text-right">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">経過時間</p>
-              <p className="font-mono font-bold">{formatElapsed(elapsed)}</p>
+          {manHours > 0 && (
+            <p className="text-center text-sm font-bold text-[var(--dashboard-accent)]">
+              工数: {manHours}h
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 作業員選択 */}
+      <Card className="rounded-2xl border-dashboard-line shadow-sm">
+        <CardContent className="p-4 space-y-3">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+            <Users size={13} />作業員
+            {selectedStaffIds.length > 0 && (
+              <span className="ml-1 bg-[var(--dashboard-accent)] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                {selectedStaffIds.length}名
+              </span>
+            )}
+          </Label>
+          {dataLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 size={14} className="animate-spin" />読み込み中...
+            </div>
+          ) : assignableStaff.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">現場にアサインされたメンバーがいません</p>
+          ) : (
+            <div className="space-y-1">
+              {assignableStaff.map(staff => {
+                const selected = selectedStaffIds.includes(staff.id);
+                return (
+                  <button
+                    key={staff.id}
+                    type="button"
+                    onClick={() => toggleStaff(staff.id)}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left',
+                      selected
+                        ? 'border-[var(--dashboard-accent)] bg-blue-50'
+                        : 'border-dashboard-line bg-white hover:bg-slate-50'
+                    )}
+                  >
+                    <div className={cn(
+                      'w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors',
+                      selected
+                        ? 'bg-[var(--dashboard-accent)] border-[var(--dashboard-accent)]'
+                        : 'border-gray-300'
+                    )}>
+                      {selected && <Check size={12} className="text-white" strokeWidth={3} />}
+                    </div>
+                    <span className="font-medium text-sm">{staff.full_name}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      日当 ¥{Number(staff.daily_rate).toLocaleString()}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="grid grid-cols-2 gap-4">
-          {!isWorking ? (
-            <Button
-              onClick={handleStart}
-              disabled={!selectedProjectId}
-              className="h-32 rounded-[2rem] bg-dashboard-ink text-dashboard-bg hover:bg-dashboard-ink/90 flex flex-col gap-3 shadow-lg disabled:opacity-50"
-            >
-              <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-                <Play fill="currentColor" size={20} />
-              </div>
-              <span className="font-bold text-lg">開始報告</span>
-            </Button>
-          ) : (
-            <Button
-              onClick={handleEnd}
-              variant="outline"
-              className="h-32 rounded-[2rem] border-4 border-dashboard-ink flex flex-col gap-3 shadow-lg"
-            >
-              <div className="w-12 h-12 rounded-full bg-dashboard-ink flex items-center justify-center text-dashboard-bg">
-                <Square fill="currentColor" size={20} />
-              </div>
-              <span className="font-bold text-lg">終了報告</span>
-            </Button>
-          )}
+      {/* メモ */}
+      <Card className="rounded-2xl border-dashboard-line shadow-sm">
+        <CardContent className="p-4 space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+            <FileText size={13} />作業メモ（任意）
+          </Label>
+          <textarea
+            value={memo}
+            onChange={e => setMemo(e.target.value)}
+            placeholder="作業内容・特記事項など..."
+            rows={3}
+            className="w-full rounded-xl border border-dashboard-line bg-white px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--dashboard-accent)]/30"
+          />
+        </CardContent>
+      </Card>
 
+      {/* 送信ボタン */}
+      <Button
+        onClick={handleSubmit}
+        disabled={submitting || !selectedProjectId || selectedStaffIds.length === 0}
+        className="w-full h-14 rounded-2xl bg-dashboard-ink text-dashboard-bg hover:bg-dashboard-ink/90 text-base font-bold gap-2 shadow-lg disabled:opacity-50"
+      >
+        {submitting
+          ? <Loader2 size={20} className="animate-spin" />
+          : <Send size={20} />}
+        {submitting ? '送信中...' : `日報を送信する${selectedStaffIds.length > 1 ? `（${selectedStaffIds.length}名分）` : ''}`}
+      </Button>
+
+      {/* 写真セクション */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold flex items-center gap-2">
+            <ImageIcon size={15} />
+            現場写真
+            {!loadingPhotos && (
+              <span className="text-xs font-normal text-muted-foreground">({photos.length}枚)</span>
+            )}
+          </h3>
           <Button
+            size="sm"
             onClick={handlePhotoClick}
             disabled={uploadingPhoto || !selectedProjectId}
-            className="h-32 rounded-[2rem] bg-blue-600 text-white hover:bg-blue-700 flex flex-col gap-3 shadow-lg disabled:opacity-50"
+            className="h-8 rounded-xl bg-blue-600 text-white hover:bg-blue-700 gap-1.5 text-xs disabled:opacity-50"
           >
-            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-              {uploadingPhoto ? <Loader2 size={24} className="animate-spin" /> : <Camera size={24} />}
-            </div>
-            <span className="font-bold text-lg">写真撮影</span>
+            {uploadingPhoto
+              ? <Loader2 size={13} className="animate-spin" />
+              : <Camera size={13} />}
+            撮影・追加
           </Button>
         </div>
-      </div>
 
-      {/* 写真ギャラリー */}
-      <div className="space-y-4">
-        <div className="flex justify-between items-center px-2">
-          <h3 className="text-sm font-bold flex items-center gap-2">
-            <ImageIcon size={16} />
-            現場写真
-            <span className="text-xs font-normal opacity-60">({photos.length}/100)</span>
-          </h3>
-        </div>
-
-        {photos.length === 0 ? (
-          <div className="mobile-card h-40 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 bg-transparent text-muted-foreground gap-2">
-            <Camera size={32} strokeWidth={1} />
-            <p className="text-xs font-medium">写真はまだありません</p>
+        {loadingPhotos ? (
+          <div className="flex items-center justify-center h-24 text-muted-foreground gap-2 text-sm">
+            <Loader2 size={16} className="animate-spin" />写真を読み込み中...
+          </div>
+        ) : photos.length === 0 ? (
+          <div
+            onClick={selectedProjectId ? handlePhotoClick : undefined}
+            className={cn(
+              'h-32 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl text-muted-foreground gap-2',
+              selectedProjectId && 'cursor-pointer hover:border-blue-300 hover:text-blue-400 transition-colors'
+            )}
+          >
+            <Camera size={28} strokeWidth={1.2} />
+            <p className="text-xs">{selectedProjectId ? 'タップして写真を追加' : '現場を選択してください'}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {photos.map((photo) => (
-              <div key={photo.id} className="relative aspect-square rounded-3xl overflow-hidden shadow-sm group">
-                <img
-                  src={photo.url}
-                  alt="現場写真"
-                  className="w-full h-full object-cover"
-                />
+            {photos.map(photo => (
+              <div key={photo.id} className="relative aspect-square rounded-2xl overflow-hidden shadow-sm">
+                <img src={photo.url} alt="現場写真" className="w-full h-full object-cover" />
                 <button
                   onClick={() => handleRemovePhoto(photo)}
-                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-md"
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm"
                 >
-                  <X size={16} />
+                  <X size={14} />
                 </button>
               </div>
             ))}
@@ -301,23 +432,6 @@ export const MobileReportPage: React.FC = () => {
         className="hidden"
         onChange={handleFileChange}
       />
-
-      {/* ボトムナビ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-8 py-4 flex justify-around items-center z-50">
-        <Button variant="ghost" size="icon" className="text-dashboard-ink">
-          <Clock />
-        </Button>
-        <button
-          onClick={handlePhotoClick}
-          disabled={uploadingPhoto || !selectedProjectId}
-          className="w-12 h-12 rounded-full bg-dashboard-ink flex items-center justify-center text-dashboard-bg -mt-10 shadow-xl border-4 border-white disabled:opacity-50"
-        >
-          <Camera />
-        </button>
-        <Button variant="ghost" size="icon" className="text-gray-400">
-          <CheckCircle2 />
-        </Button>
-      </div>
     </div>
   );
 };
