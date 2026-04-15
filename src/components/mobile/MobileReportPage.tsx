@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { useSupabaseData } from '@/lib/useSupabaseData';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 interface PhotoEntry {
@@ -39,6 +39,9 @@ interface PhotoEntry {
 export const MobileReportPage: React.FC = () => {
   const { user } = useAuth();
   const { projects, profiles, loading: dataLoading } = useSupabaseData();
+  const location = useLocation();
+  // /report からアクセスした場合は管理画面への導線を非表示
+  const isReportMode = location.pathname === '/report';
 
   // ── フォーム状態 ──────────────────────────────────────────────
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -202,11 +205,13 @@ export const MobileReportPage: React.FC = () => {
     <div className="max-w-md mx-auto pb-24 px-4 space-y-5">
       {/* ヘッダー */}
       <header className="flex items-center gap-3 pt-4">
-        <Link to="/">
-          <Button variant="ghost" size="icon" className="rounded-full">
-            <ArrowLeft size={20} />
-          </Button>
-        </Link>
+        {!isReportMode && (
+          <Link to="/">
+            <Button variant="ghost" size="icon" className="rounded-full">
+              <ArrowLeft size={20} />
+            </Button>
+          </Link>
+        )}
         <div>
           <h2 className="text-xl font-bold tracking-tight">日報入力</h2>
           <p className="text-xs text-muted-foreground">現場・作業員・時間を記録</p>
@@ -226,7 +231,11 @@ export const MobileReportPage: React.FC = () => {
           ) : (
             <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
               <SelectTrigger className="rounded-xl border-dashboard-line mt-1">
-                <SelectValue placeholder="現場を選択..." />
+                <span className={selectedProjectId ? 'text-foreground' : 'text-muted-foreground'}>
+                  {selectedProjectId
+                    ? (projects.find(p => p.id === selectedProjectId)?.name ?? '現場を選択...')
+                    : '現場を選択...'}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 {projects.map(p => (
@@ -329,9 +338,6 @@ export const MobileReportPage: React.FC = () => {
                       {selected && <Check size={12} className="text-white" strokeWidth={3} />}
                     </div>
                     <span className="font-medium text-sm">{staff.full_name}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      日当 ¥{Number(staff.daily_rate).toLocaleString()}
-                    </span>
                   </button>
                 );
               })}
