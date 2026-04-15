@@ -1,0 +1,11 @@
+{
+  "name": "Construx - 建設現場工程・請求管理",
+  "description": "建設現場の工程管理、工数報告、請求シミュレーションを行うための統合管理システム。親方のスマホ報告から社長の利益率管理までをカバーします。",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "database",
+    "storage"
+  ]
+}
