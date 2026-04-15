@@ -275,112 +275,109 @@ export const TimelinePage: React.FC = () => {
               プロジェクト進行状況
             </h3>
 
-            <ScrollArea className="w-full rounded-md border border-dashboard-line/50">
-              <div className="flex">
-                {/* Project Names Column (Left Fixed) */}
-                <div className="w-48 shrink-0 border-r border-dashboard-line/50">
-                  <div className="h-12 border-b border-dashboard-line/50 flex items-center px-4 font-bold text-xs text-muted-foreground">
-                    現場
-                  </div>
-                  <ScrollArea className="h-96">
-                    <div className="space-y-4 p-4">
-                      {sortedTimeline.length === 0 && (
-                        <div className="text-center text-muted-foreground text-sm">プロジェクトなし</div>
-                      )}
-                      {sortedTimeline.map((item, idx) => (
-                        <div key={item.id} className="text-xs font-medium text-dashboard-ink truncate">
-                          {item.name}
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
+            <div className="border border-dashboard-line/50 rounded-md overflow-hidden flex">
+              {/* Project Names Column (Left Fixed) */}
+              <div className="w-48 shrink-0 border-r border-dashboard-line/50 flex flex-col">
+                <div className="h-12 border-b border-dashboard-line/50 flex items-center px-4 font-bold text-xs text-muted-foreground">
+                  現場
                 </div>
-
-                {/* Gantt Chart (Right Scrollable) */}
-                <div className="flex-1">
-                  <div className="whitespace-nowrap">
-                    {/* Timeline Header (Months/Days) */}
-                    <div className="flex border-b border-dashboard-line mb-0 relative h-12">
-                      {daysInGantt.map((day, i) => {
-                        const isFirstOfMonth = day.getDate() === 1;
-                        return (
-                          <div key={i} className="flex-1 relative border-l border-dashboard-line/20 h-full min-w-[20px]">
-                            {isFirstOfMonth && (
-                              <span className="absolute -top-2 left-2 text-xs font-bold text-dashboard-ink">
-                                {format(day, 'M月')}
-                              </span>
-                            )}
-                            {day.getDate() % 5 === 0 && (
-                              <span className="absolute bottom-1 left-1 text-[10px] text-muted-foreground">
-                                {day.getDate()}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {/* Today Indicator Line */}
-                      {isAfter(today, ganttStartDate) && isBefore(today, ganttEndDate) && (
-                        <div
-                          className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10"
-                          style={{ left: `${(differenceInDays(today, ganttStartDate) / totalDays) * 100}%` }}
-                        >
-                          <span className="absolute -top-5 -translate-x-1/2 text-[10px] text-white font-bold bg-red-500 px-2 py-0.5 rounded-full">Today</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Gantt Rows */}
-                    <div className="space-y-4 relative p-4">
-                      {/* Background Grid */}
-                      <div className="absolute inset-0 flex pointer-events-none">
-                        {daysInGantt.map((_, i) => (
-                          <div key={i} className="flex-1 border-l border-dashboard-line/10 h-full min-w-[20px]" />
-                        ))}
+                <div className="flex-1 overflow-y-auto">
+                  <div className="divide-y divide-dashboard-line/50">
+                    {sortedTimeline.length === 0 && (
+                      <div className="h-12 flex items-center px-4 text-center text-muted-foreground text-sm">プロジェクトなし</div>
+                    )}
+                    {sortedTimeline.map((item) => (
+                      <div key={item.id} className="h-14 flex items-center px-4 text-xs font-medium text-dashboard-ink truncate">
+                        {item.name}
                       </div>
-
-                      {sortedTimeline.length === 0 && (
-                        <div className="text-center text-muted-foreground text-sm py-4">プロジェクトがありません</div>
-                      )}
-
-                      {sortedTimeline.map((item, idx) => (
-                        <div key={item.id} className="relative h-10 flex items-center group">
-                          {/* Gantt Bar */}
-                          {item.start_date && item.planned_end_date && (
-                            <Tooltip>
-                              <TooltipTrigger render={
-                                <div
-                                  className={`absolute h-8 rounded-md flex items-center px-3 text-xs font-medium text-white whitespace-nowrap overflow-hidden transition-all shadow-sm cursor-pointer ${getProjectColor(item.id, idx)}`}
-                                  style={getPositionStyles(item.start_date, item.planned_end_date)}
-                                />
-                              }>
-                                {item.name}
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <div className="space-y-1">
-                                  <p className="font-bold">{item.name}</p>
-                                  <p className="text-xs">着工: {format(parseISO(item.start_date), 'yyyy/MM/dd')}</p>
-                                  <p className="text-xs">完工予定: {format(parseISO(item.planned_end_date), 'yyyy/MM/dd')}</p>
-                                  <p className="text-xs">ステータス: {item.status}</p>
-                                </div>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                          {/* Deadline Marker */}
-                          {item.deadline && (
-                            <div
-                              className="absolute w-3 h-3 rounded-full bg-red-500 border-2 border-white top-1/2 -translate-y-1/2 z-10 shadow-sm"
-                              style={{ left: `${(differenceInDays(parseISO(item.deadline), ganttStartDate) / totalDays) * 100}%` }}
-                              title={`請求期限: ${item.deadline}`}
-                            />
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    ))}
                   </div>
                 </div>
               </div>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
+
+              {/* Gantt Chart (Right Scrollable) */}
+              <div className="flex-1 overflow-x-auto">
+                <div className="whitespace-nowrap min-w-full">
+                  {/* Timeline Header (Months/Days) */}
+                  <div className="flex border-b border-dashboard-line h-12 relative">
+                    {daysInGantt.map((day, i) => {
+                      const isFirstOfMonth = day.getDate() === 1;
+                      return (
+                        <div key={i} className="flex-1 relative border-l border-dashboard-line/20 h-full min-w-[20px]">
+                          {isFirstOfMonth && (
+                            <span className="absolute -top-2 left-2 text-xs font-bold text-dashboard-ink">
+                              {format(day, 'M月')}
+                            </span>
+                          )}
+                          {day.getDate() % 5 === 0 && (
+                            <span className="absolute bottom-1 left-1 text-[10px] text-muted-foreground">
+                              {day.getDate()}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* Today Indicator Line */}
+                    {isAfter(today, ganttStartDate) && isBefore(today, ganttEndDate) && (
+                      <div
+                        className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10"
+                        style={{ left: `${(differenceInDays(today, ganttStartDate) / totalDays) * 100}%` }}
+                      >
+                        <span className="absolute -top-5 -translate-x-1/2 text-[10px] text-white font-bold bg-red-500 px-2 py-0.5 rounded-full">Today</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Gantt Rows */}
+                  <div className="relative divide-y divide-dashboard-line/50">
+                    {/* Background Grid */}
+                    <div className="absolute inset-0 flex pointer-events-none">
+                      {daysInGantt.map((_, i) => (
+                        <div key={i} className="flex-1 border-l border-dashboard-line/10 h-full min-w-[20px]" />
+                      ))}
+                    </div>
+
+                    {sortedTimeline.length === 0 && (
+                      <div className="h-12 flex items-center justify-center text-muted-foreground text-sm">プロジェクトがありません</div>
+                    )}
+
+                    {sortedTimeline.map((item, idx) => (
+                      <div key={item.id} className="relative h-14 flex items-center group px-4">
+                        {/* Gantt Bar */}
+                        {item.start_date && item.planned_end_date && (
+                          <Tooltip>
+                            <TooltipTrigger render={
+                              <div
+                                className={`absolute h-8 rounded-md flex items-center px-3 text-xs font-medium text-white whitespace-nowrap overflow-hidden transition-all shadow-sm cursor-pointer ${getProjectColor(item.id, idx)}`}
+                                style={getPositionStyles(item.start_date, item.planned_end_date)}
+                              />
+                            }>
+                              {item.name}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <div className="space-y-1">
+                                <p className="font-bold">{item.name}</p>
+                                <p className="text-xs">着工: {format(parseISO(item.start_date), 'yyyy/MM/dd')}</p>
+                                <p className="text-xs">完工予定: {format(parseISO(item.planned_end_date), 'yyyy/MM/dd')}</p>
+                                <p className="text-xs">ステータス: {item.status}</p>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {/* Deadline Marker */}
+                        {item.deadline && (
+                          <div
+                            className="absolute w-3 h-3 rounded-full bg-red-500 border-2 border-white top-1/2 -translate-y-1/2 z-10 shadow-sm"
+                            style={{ left: `${(differenceInDays(parseISO(item.deadline), ganttStartDate) / totalDays) * 100}%` }}
+                            title={`請求期限: ${item.deadline}`}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Detailed Table */}
