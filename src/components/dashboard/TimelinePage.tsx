@@ -32,13 +32,32 @@ import { useSupabaseData } from '@/lib/useSupabaseData';
 type StatusFilter = 'all' | 'pending' | 'active' | 'completed' | 'invoiced';
 type DeadlineFilter = 'all' | '7days' | '30days' | 'overdue';
 
+// プロジェクトごとのカラーパレット
+const colorPalette = [
+  'bg-blue-400',
+  'bg-green-400',
+  'bg-orange-400',
+  'bg-pink-400',
+  'bg-purple-400',
+  'bg-yellow-400',
+  'bg-red-400',
+  'bg-teal-400',
+  'bg-indigo-400',
+  'bg-cyan-400',
+];
+
 export const TimelinePage: React.FC = () => {
   const { projects, loading } = useSupabaseData();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('all');
   const [filterOpen, setFilterOpen] = useState(false);
+  const [ganttViewStartDate, setGanttViewStartDate] = useState(new Date(2026, 0, 1)); // 2026/1/1 をデフォルト
 
   const today = startOfDay(new Date());
+
+  // スライダーの範囲
+  const sliderMin = new Date(2026, 0, 1);
+  const sliderMax = new Date(2030, 11, 31);
 
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
@@ -68,22 +87,37 @@ export const TimelinePage: React.FC = () => {
     setFilterOpen(false);
   };
 
-  // Gantt Chart Logic
-  const ganttStartDate = subMonths(today, 1);
-  const ganttEndDate = addMonths(today, 1);
-  
+  // Gantt Chart Logic - スライダーベース
+  const ganttStartDate = startOfDay(ganttViewStartDate);
+  const ganttEndDate = addMonths(ganttStartDate, 2);
+
   const daysInGantt = useMemo(() => {
     return eachDayOfInterval({ start: ganttStartDate, end: ganttEndDate });
   }, [ganttStartDate, ganttEndDate]);
 
   const totalDays = daysInGantt.length;
 
+  // スライダー値を日付に変換・更新
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const days = parseInt(e.target.value, 10);
+    const newDate = new Date(sliderMin);
+    newDate.setDate(newDate.getDate() + days);
+    setGanttViewStartDate(startOfDay(newDate));
+  };
+
+  const sliderCurrentDays = Math.floor((ganttViewStartDate.getTime() - sliderMin.getTime()) / (1000 * 60 * 60 * 24));
+  const sliderMaxDays = Math.floor((sliderMax.getTime() - sliderMin.getTime()) / (1000 * 60 * 60 * 24));
+
+  const getProjectColor = (projectId: string, index: number) => {
+    return colorPalette[index % colorPalette.length];
+  };
+
   const getPositionStyles = (startDateStr: string | null, endDateStr: string | null) => {
     if (!startDateStr || !endDateStr) return { display: 'none' };
-    
+
     const start = parseISO(startDateStr);
     const end = parseISO(endDateStr);
-    
+
     // Clamp dates to gantt view
     const clampedStart = isBefore(start, ganttStartDate) ? ganttStartDate : start;
     const clampedEnd = isAfter(end, ganttEndDate) ? ganttEndDate : end;
@@ -97,7 +131,7 @@ export const TimelinePage: React.FC = () => {
 
     return {
       left: `${Math.max(0, leftPercent)}%`,
-      width: `${Math.max(0.5, widthPercent)}%`, // Ensure minimum width
+      width: `${Math.max(0.5, widthPercent)}%`,
     };
   };
 
@@ -111,7 +145,7 @@ export const TimelinePage: React.FC = () => {
       item.status,
       item.total_order_amount
     ]);
-    
+
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -210,91 +244,139 @@ export const TimelinePage: React.FC = () => {
         </header>
 
         <div className="grid grid-cols-1 gap-8">
+          {/* Date Range Slider */}
+          <div className="border border-dashboard-line rounded-xl p-6 bg-white shadow-sm space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-bold text-dashboard-ink">表示期間（2ヶ月）</label>
+                <span className="text-xs text-muted-foreground">
+                  {format(ganttStartDate, 'yyyy年MM月dd日')} ～ {format(ganttEndDate, 'yyyy年MM月dd日')}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max={sliderMaxDays}
+                value={sliderCurrentDays}
+                onChange={handleSliderChange}
+                className="w-full cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{format(sliderMin, 'yyyy年MM月dd日')}</span>
+                <span>{format(sliderMax, 'yyyy年MM月dd日')}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Gantt Chart Visualization */}
           <div className="border border-dashboard-line rounded-xl p-6 bg-white shadow-sm space-y-6">
             <h3 className="font-bold flex items-center gap-2 text-dashboard-ink">
               <Calendar size={18} className="text-[var(--dashboard-accent)]" />
-              プロジェクト進行状況 (前後1ヶ月)
+              プロジェクト進行状況
             </h3>
-            
-            <ScrollArea className="w-full whitespace-nowrap rounded-md border border-dashboard-line/50">
-              <div className="min-w-[1000px] p-4">
-                {/* Timeline Header (Months/Days) */}
-                <div className="flex border-b border-dashboard-line mb-4 relative h-10">
-                  {daysInGantt.map((day, i) => {
-                    const isFirstOfMonth = day.getDate() === 1;
-                    return (
-                      <div key={i} className="flex-1 relative border-l border-dashboard-line/20 h-full">
-                        {isFirstOfMonth && (
-                          <span className="absolute -top-2 left-2 text-xs font-bold text-dashboard-ink">
-                            {format(day, 'yyyy年M月')}
-                          </span>
-                        )}
-                        {day.getDate() % 5 === 0 && (
-                          <span className="absolute bottom-1 left-1 text-[10px] text-muted-foreground">
-                            {day.getDate()}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {/* Today Indicator Line */}
-                  <div 
-                    className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10"
-                    style={{ left: `${(differenceInDays(today, ganttStartDate) / totalDays) * 100}%` }}
-                  >
-                    <span className="absolute -top-5 -translate-x-1/2 text-[10px] text-white font-bold bg-red-500 px-2 py-0.5 rounded-full">Today</span>
+
+            <ScrollArea className="w-full rounded-md border border-dashboard-line/50">
+              <div className="flex">
+                {/* Project Names Column (Left Fixed) */}
+                <div className="w-48 shrink-0 border-r border-dashboard-line/50">
+                  <div className="h-12 border-b border-dashboard-line/50 flex items-center px-4 font-bold text-xs text-muted-foreground">
+                    現場
                   </div>
+                  <ScrollArea className="h-96">
+                    <div className="space-y-4 p-4">
+                      {sortedTimeline.length === 0 && (
+                        <div className="text-center text-muted-foreground text-sm">プロジェクトなし</div>
+                      )}
+                      {sortedTimeline.map((item, idx) => (
+                        <div key={item.id} className="text-xs font-medium text-dashboard-ink truncate">
+                          {item.name}
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
                 </div>
 
-                {/* Gantt Rows */}
-                <div className="space-y-4 relative">
-                  {/* Background Grid */}
-                  <div className="absolute inset-0 flex pointer-events-none">
-                    {daysInGantt.map((_, i) => (
-                      <div key={i} className="flex-1 border-l border-dashboard-line/10 h-full" />
-                    ))}
-                  </div>
-
-                  {sortedTimeline.length === 0 && (
-                    <div className="text-center text-muted-foreground text-sm py-4">プロジェクトがありません</div>
-                  )}
-
-                  {sortedTimeline.map((item) => (
-                    <div key={item.id} className="relative h-10 flex items-center group">
-                      {/* Project Label Area */}
-                      <div className="absolute w-full h-8 bg-slate-100 rounded-md overflow-hidden">
-                        {item.start_date && item.planned_end_date && (
-                          <Tooltip>
-                            <TooltipTrigger render={
-                              <div 
-                                className={`absolute h-full rounded-md flex items-center px-3 text-xs font-medium text-white whitespace-nowrap overflow-hidden transition-all shadow-sm cursor-pointer ${item.status === 'completed' ? 'bg-slate-400' : 'bg-[var(--dashboard-accent)]'}`}
-                                style={getPositionStyles(item.start_date, item.planned_end_date)}
-                              />
-                            }>
-                              {item.name}
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <div className="space-y-1">
-                                <p className="font-bold">{item.name}</p>
-                                <p className="text-xs">着工: {format(parseISO(item.start_date), 'yyyy/MM/dd')}</p>
-                                <p className="text-xs">完工予定: {format(parseISO(item.planned_end_date), 'yyyy/MM/dd')}</p>
-                                <p className="text-xs">ステータス: {item.status}</p>
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                      </div>
-                      {/* Deadline Marker */}
-                      {item.deadline && (
-                        <div 
-                          className="absolute w-3 h-3 rounded-full bg-red-500 border-2 border-white top-1/2 -translate-y-1/2 z-10 shadow-sm"
-                          style={{ left: `${(differenceInDays(parseISO(item.deadline), ganttStartDate) / totalDays) * 100}%` }}
-                          title={`請求期限: ${item.deadline}`}
-                        />
+                {/* Gantt Chart (Right Scrollable) */}
+                <div className="flex-1">
+                  <div className="whitespace-nowrap">
+                    {/* Timeline Header (Months/Days) */}
+                    <div className="flex border-b border-dashboard-line mb-0 relative h-12">
+                      {daysInGantt.map((day, i) => {
+                        const isFirstOfMonth = day.getDate() === 1;
+                        return (
+                          <div key={i} className="flex-1 relative border-l border-dashboard-line/20 h-full min-w-[20px]">
+                            {isFirstOfMonth && (
+                              <span className="absolute -top-2 left-2 text-xs font-bold text-dashboard-ink">
+                                {format(day, 'M月')}
+                              </span>
+                            )}
+                            {day.getDate() % 5 === 0 && (
+                              <span className="absolute bottom-1 left-1 text-[10px] text-muted-foreground">
+                                {day.getDate()}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {/* Today Indicator Line */}
+                      {isAfter(today, ganttStartDate) && isBefore(today, ganttEndDate) && (
+                        <div
+                          className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10"
+                          style={{ left: `${(differenceInDays(today, ganttStartDate) / totalDays) * 100}%` }}
+                        >
+                          <span className="absolute -top-5 -translate-x-1/2 text-[10px] text-white font-bold bg-red-500 px-2 py-0.5 rounded-full">Today</span>
+                        </div>
                       )}
                     </div>
-                  ))}
+
+                    {/* Gantt Rows */}
+                    <div className="space-y-4 relative p-4">
+                      {/* Background Grid */}
+                      <div className="absolute inset-0 flex pointer-events-none">
+                        {daysInGantt.map((_, i) => (
+                          <div key={i} className="flex-1 border-l border-dashboard-line/10 h-full min-w-[20px]" />
+                        ))}
+                      </div>
+
+                      {sortedTimeline.length === 0 && (
+                        <div className="text-center text-muted-foreground text-sm py-4">プロジェクトがありません</div>
+                      )}
+
+                      {sortedTimeline.map((item, idx) => (
+                        <div key={item.id} className="relative h-10 flex items-center group">
+                          {/* Gantt Bar */}
+                          {item.start_date && item.planned_end_date && (
+                            <Tooltip>
+                              <TooltipTrigger render={
+                                <div
+                                  className={`absolute h-8 rounded-md flex items-center px-3 text-xs font-medium text-white whitespace-nowrap overflow-hidden transition-all shadow-sm cursor-pointer ${getProjectColor(item.id, idx)}`}
+                                  style={getPositionStyles(item.start_date, item.planned_end_date)}
+                                />
+                              }>
+                                {item.name}
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="space-y-1">
+                                  <p className="font-bold">{item.name}</p>
+                                  <p className="text-xs">着工: {format(parseISO(item.start_date), 'yyyy/MM/dd')}</p>
+                                  <p className="text-xs">完工予定: {format(parseISO(item.planned_end_date), 'yyyy/MM/dd')}</p>
+                                  <p className="text-xs">ステータス: {item.status}</p>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                          {/* Deadline Marker */}
+                          {item.deadline && (
+                            <div
+                              className="absolute w-3 h-3 rounded-full bg-red-500 border-2 border-white top-1/2 -translate-y-1/2 z-10 shadow-sm"
+                              style={{ left: `${(differenceInDays(parseISO(item.deadline), ganttStartDate) / totalDays) * 100}%` }}
+                              title={`請求期限: ${item.deadline}`}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
               <ScrollBar orientation="horizontal" />
