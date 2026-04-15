@@ -5,11 +5,11 @@ import {
   Users,
   Clock,
   FileText,
-  LogOut,
-  Shield
+  LogOut
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
+import { useSupabaseData } from '@/lib/useSupabaseData';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -18,19 +18,24 @@ interface DashboardLayoutProps {
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { signOut, session } = useAuth();
+  const { authUsers } = useSupabaseData();
 
   const handleLogout = async () => {
     await signOut();
     navigate('/login');
   };
 
+  // 現在のログインユーザー情報
+  const currentUserId = session?.user?.id;
+  const userMetadata = currentUserId ? authUsers.find(u => u.id === currentUserId) : null;
+  const displayName = userMetadata?.display_name || session?.user?.email || 'Unknown';
+
   const navItems = [
     { name: 'ダッシュボード', path: '/', icon: LayoutDashboard },
     { name: '現場管理', path: '/projects', icon: FileText },
     { name: '人材', path: '/staff', icon: Users },
     { name: 'タイムライン', path: '/timeline', icon: Clock },
-    { name: '認証ユーザー', path: '/admin/users', icon: Shield },
   ];
 
   return (
@@ -38,7 +43,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
 
       {/* ── PC サイドバー (md 以上のみ表示) ── */}
       <aside className="hidden md:flex w-64 border-r border-dashboard-line h-screen sticky top-0 p-6 flex-col gap-8 bg-dashboard-bg shrink-0">
-        <div className="text-2xl font-bold tracking-tighter italic">CONSTRUX</div>
+        <div className="space-y-2">
+          <div className="text-2xl font-bold tracking-tighter italic">CONSTRUX</div>
+          <div className="border-t border-dashboard-line pt-3 space-y-0.5">
+            <p className="text-xs font-medium text-muted-foreground">ログイン中</p>
+            <p className="text-sm font-bold text-dashboard-ink">{displayName}</p>
+          </div>
+        </div>
 
         <nav className="flex flex-col gap-2 flex-1">
           {navItems.map((item) => {
