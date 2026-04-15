@@ -61,18 +61,6 @@ export function useSupabaseData() {
 
   useEffect(() => {
     fetchData();
-
-    const channels = supabase.channel('custom-all-channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_expenses' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_assignments' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_members' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'auth_user_metadata' }, fetchData)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channels);
-    };
   }, []);
 
   return { projects, profiles, authUsers, loading, refetch: fetchData };
