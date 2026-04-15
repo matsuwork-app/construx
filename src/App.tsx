@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import {
   Users,
   FileText,
@@ -20,11 +20,12 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { differenceInDays, formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
-// 認証済みルートを保護するコンポーネント
+// 認証済みルートを保護するコンポーネント (ログイン後に元のページへ戻る)
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session, loading } = useAuth();
+  const location = useLocation();
   if (loading) return null;
-  if (!session) return <Navigate to="/login" replace />;
+  if (!session) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   return <>{children}</>;
 };
 
@@ -174,6 +175,7 @@ export default function App() {
               <Route path="/projects" element={<ProtectedRoute><ProjectsPage /></ProtectedRoute>} />
               <Route path="/timeline" element={<ProtectedRoute><TimelinePage /></ProtectedRoute>} />
               <Route path="/mobile" element={<ProtectedRoute><MobileReportPage /></ProtectedRoute>} />
+              <Route path="/report" element={<ProtectedRoute><MobileReportPage /></ProtectedRoute>} />
             </Routes>
             <Toaster />
           </div>

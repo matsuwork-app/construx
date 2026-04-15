@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { AlertCircle, Loader2 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const { session, loading: authLoading, signIn } = useAuth();
+  const location = useLocation();
+  const from = (location.state as { from?: string })?.from || '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +25,7 @@ export const LoginPage: React.FC = () => {
   }
 
   if (session) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={from} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
